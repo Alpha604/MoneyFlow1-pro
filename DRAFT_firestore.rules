@@ -1,0 +1,182 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // --- Validation Blueprints ---
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['userId', 'label', 'category', 'amount', 'date', 'type', 'createdAt', 'updatedAt'])
+        && data.userId == request.auth.uid
+        && data.label is string && data.label.size() <= 200 && data.label.size() > 0
+        && data.category is string && data.category.size() <= 50 && data.category.size() > 0
+        && data.amount is number
+        && data.date is string && data.date.size() <= 50
+        && data.type is string && data.type.size() <= 20 && (data.type == 'income' || data.type == 'expense')
+        && data.get('iconName', '') is string
+        && data.createdAt is string
+        && data.updatedAt is string;
+    }
+
+    function isValidAccount(data) {
+      return data.keys().hasAll(['userId', 'name', 'bank', 'balance', 'type', 'createdAt', 'updatedAt'])
+        && data.userId == request.auth.uid
+        && data.name is string && data.name.size() <= 200 && data.name.size() > 0
+        && data.bank is string && data.bank.size() <= 200
+        && data.balance is number
+        && data.type is string && data.type.size() <= 50
+        && data.get('color', '') is string
+        && data.get('iconName', '') is string
+        && data.createdAt is string
+        && data.updatedAt is string;
+    }
+
+    function isValidCard(data) {
+      return data.keys().hasAll(['userId', 'name', 'network', 'last4', 'expiry', 'createdAt', 'updatedAt'])
+        && data.userId == request.auth.uid
+        && data.name is string && data.name.size() <= 200 && data.name.size() > 0
+        && data.network is string && data.network.size() <= 50
+        && data.last4 is string && data.last4.size() <= 4
+        && data.expiry is string && data.expiry.size() <= 10
+        && data.get('type', '') is string
+        && data.get('color', '') is string
+        && data.createdAt is string
+        && data.updatedAt is string;
+    }
+
+    function isValidBudget(data) {
+      return data.keys().hasAll(['userId', 'label', 'total', 'spent', 'createdAt', 'updatedAt'])
+        && data.userId == request.auth.uid
+        && data.label is string && data.label.size() <= 200 && data.label.size() > 0
+        && data.total is number && data.total >= 0
+        && data.spent is number && data.spent >= 0
+        && data.get('color', '') is string
+        && data.createdAt is string
+        && data.updatedAt is string;
+    }
+
+    function isValidGoal(data) {
+      return data.keys().hasAll(['userId', 'name', 'target', 'current', 'date', 'createdAt', 'updatedAt'])
+        && data.userId == request.auth.uid
+        && data.name is string && data.name.size() <= 200 && data.name.size() > 0
+        && data.target is number && data.target >= 0
+        && data.current is number && data.current >= 0
+        && data.date is string && data.date.size() <= 50
+        && data.get('colorGroup', '') is string
+        && data.createdAt is string
+        && data.updatedAt is string;
+    }
+
+
+    // --- Transactions Collection ---
+    match /transactions/{transactionId} {
+      allow get: if isValidId(transactionId) && isOwner(existing().userId);
+      allow list: if isOwner(resource.data.userId);
+
+      allow create: if isValidId(transactionId)
+        && isValidTransaction(incoming())
+        && incoming().keys().size() <= 10; // Extra field prevention
+
+      allow update: if isValidId(transactionId)
+        && isOwner(existing().userId)
+        && isValidTransaction(incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt;
+
+      allow delete: if isValidId(transactionId) && isOwner(existing().userId);
+    }
+
+    // --- Accounts Collection ---
+    match /accounts/{accountId} {
+      allow get: if isValidId(accountId) && isOwner(existing().userId);
+      allow list: if isOwner(resource.data.userId);
+
+      allow create: if isValidId(accountId)
+        && isValidAccount(incoming())
+        && incoming().keys().size() <= 10;
+
+      allow update: if isValidId(accountId)
+        && isOwner(existing().userId)
+        && isValidAccount(incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt;
+
+      allow delete: if isValidId(accountId) && isOwner(existing().userId);
+    }
+
+    // --- Cards Collection ---
+    match /cards/{cardId} {
+      allow get: if isValidId(cardId) && isOwner(existing().userId);
+      allow list: if isOwner(resource.data.userId);
+
+      allow create: if isValidId(cardId)
+        && isValidCard(incoming())
+        && incoming().keys().size() <= 10;
+
+      allow update: if isValidId(cardId)
+        && isOwner(existing().userId)
+        && isValidCard(incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt;
+
+      allow delete: if isValidId(cardId) && isOwner(existing().userId);
+    }
+
+    // --- Budgets Collection ---
+    match /budgets/{budgetId} {
+      allow get: if isValidId(budgetId) && isOwner(existing().userId);
+      allow list: if isOwner(resource.data.userId);
+
+      allow create: if isValidId(budgetId)
+        && isValidBudget(incoming())
+        && incoming().keys().size() <= 10;
+
+      allow update: if isValidId(budgetId)
+        && isOwner(existing().userId)
+        && isValidBudget(incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt;
+
+      allow delete: if isValidId(budgetId) && isOwner(existing().userId);
+    }
+
+    // --- Goals Collection ---
+    match /goals/{goalId} {
+      allow get: if isValidId(goalId) && isOwner(existing().userId);
+      allow list: if isOwner(resource.data.userId);
+
+      allow create: if isValidId(goalId)
+        && isValidGoal(incoming())
+        && incoming().keys().size() <= 10;
+
+      allow update: if isValidId(goalId)
+        && isOwner(existing().userId)
+        && isValidGoal(incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt;
+
+      allow delete: if isValidId(goalId) && isOwner(existing().userId);
+    }
+  }
+}
