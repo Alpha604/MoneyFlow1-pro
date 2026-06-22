@@ -68,6 +68,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
+    // Use custom client ID if provided via environment
+    if (import.meta.env.VITE_GOOGLE_CLIENT_ID) {
+      provider.setCustomParameters({
+        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID
+      });
+    }
+
     const result = await signInWithPopup(auth, provider);
     if (result.user) {
       try {
